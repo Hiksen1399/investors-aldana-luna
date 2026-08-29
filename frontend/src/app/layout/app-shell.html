@@ -1,0 +1,27 @@
+<div class="app-frame">
+  <aside [class.open]="menuOpen()">
+    <a class="brand" routerLink="/app/dashboard"><span>Mi Portafolio</span></a>
+    <button class="close-menu" (click)="menuOpen.set(false)"><i class="bi bi-x-lg"></i></button>
+    <nav>
+      @for (item of nav; track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="active" (click)="menuOpen.set(false)"><i [class]="item.icon"></i><span>{{ item.label }}</span></a>
+      }
+      <a routerLink="/app/configuracion" routerLinkActive="active" (click)="menuOpen.set(false)"><i class="bi bi-gear"></i><span>Configuración</span></a>
+    </nav>
+    <a class="register-movement" routerLink="/app/operaciones" [queryParams]="{nuevo: true}" (click)="menuOpen.set(false)"><i class="bi bi-plus-lg"></i> Registrar movimiento</a>
+    <div class="user-block">
+      <span class="avatar">{{ (auth.user()?.profile?.fullName || 'U').charAt(0) }}</span>
+      <div><strong>{{ auth.user()?.profile?.fullName || 'Mi cuenta' }}</strong><small>{{ auth.user()?.email }}</small></div>
+      <button title="Cerrar sesión" (click)="auth.logout()"><i class="bi bi-box-arrow-right"></i></button>
+    </div>
+  </aside>
+  @if (menuOpen()) { <button class="backdrop" (click)="menuOpen.set(false)"></button> }
+  <section class="content-area">
+    <header class="desktop-header">
+      <strong>{{ currentTitle() }}</strong>
+      <div><span>{{ today | date:'d \'de\' MMMM \'de\' y' }}</span><i></i><span>{{ today | date:'HH:mm' }}</span><button title="Actualizar" (click)="reload()"><i class="bi bi-arrow-clockwise"></i></button></div>
+    </header>
+    <header class="mobile-header"><button (click)="menuOpen.set(true)"><i class="bi bi-list"></i></button><strong>Mi Portafolio</strong><span>{{ currentTitle() }}</span></header>
+    <router-outlet />
+  </section>
+</div>

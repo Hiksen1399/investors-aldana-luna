@@ -1,0 +1,68 @@
+<main class="page">
+  <header class="page-heading"><div><h1>Importaciones</h1><p>Registra operaciones de Hapi y XTB desde correos y documentos reales.</p></div></header>
+  @if(error()){<div class="error-banner"><i class="bi bi-exclamation-triangle"></i>{{error()}}</div>}
+  @if(success()){<div class="success-banner"><i class="bi bi-check-circle"></i>{{success()}}</div>}
+
+  <section class="flow-card card">
+    <article><span>1</span><i class="bi bi-cart-check"></i><div><strong>Compras o vendes</strong><small>Realizas la operación en Hapi o XTB.</small></div></article><b><i class="bi bi-arrow-right"></i></b>
+    <article><span>2</span><i class="bi bi-envelope-check"></i><div><strong>Llega la confirmación</strong><small>Outlook recibe el correo del broker.</small></div></article><b><i class="bi bi-arrow-right"></i></b>
+    <article><span>3</span><i class="bi bi-file-earmark-text"></i><div><strong>Leemos los datos</strong><small>Correo Hapi o documento XTB.</small></div></article><b><i class="bi bi-arrow-right"></i></b>
+    <article><span>4</span><i class="bi bi-shield-check"></i><div><strong>Revisas y confirmas</strong><small>Validamos cuenta y duplicados.</small></div></article><b><i class="bi bi-arrow-right"></i></b>
+    <article><span>5</span><i class="bi bi-graph-up-arrow"></i><div><strong>Portafolio actualizado</strong><small>La operación entra al historial.</small></div></article>
+  </section>
+
+  <section class="integration-grid">
+    <article class="card integration outlook-card">
+      <header><span class="logo outlook"><i class="bi bi-microsoft"></i></span><i>MICROSOFT GRAPH</i></header>
+      <h2>{{outlook().connected?'Outlook conectado':'Conectar Outlook gratis'}}</h2>
+      @if(outlook().connected){
+        <p class="connected-email"><i class="bi bi-check-circle-fill"></i>{{outlook().email}}</p>
+        <ul><li>Solo confirmaciones de compra o venta</li><li>Lee el cuerpo y los adjuntos directamente</li><li>Evita dividendos, publicidad y extractos</li></ul>
+        <label class="sync-range">Buscar operaciones de<select [(ngModel)]="outlookLookbackMonths"><option [ngValue]="1">Último mes</option><option [ngValue]="3">Últimos 3 meses</option><option [ngValue]="6">Últimos 6 meses</option><option [ngValue]="12">Último año</option><option [ngValue]="24">Últimos 2 años</option><option [ngValue]="60">Últimos 5 años</option></select></label>
+        <div class="outlook-actions"><button class="button primary" (click)="syncOutlook()" [disabled]="syncingOutlook()"><i class="bi bi-arrow-repeat"></i>{{syncingOutlook()?'Sincronizando…':'Buscar e importar'}}</button><button class="icon-button" title="Desconectar Outlook" (click)="disconnectOutlook()"><i class="bi bi-box-arrow-right"></i></button></div>
+        @if(outlook().lastSyncedAt){<small class="last-sync">Actualizado {{outlook().lastSyncedAt|date:'d MMM y, HH:mm'}}</small>}
+      }@else{
+        <p>Autoriza la lectura de tu correo para detectar únicamente confirmaciones de Hapi y XTB.</p><ul><li>OAuth oficial de Microsoft</li><li>No guardamos tu contraseña</li><li>Permiso de solo lectura</li></ul><button class="button primary" (click)="connectOutlook()" [disabled]="connectingOutlook()||!outlook().configured"><i class="bi bi-microsoft"></i>{{!outlook().configured?'Falta configurar Microsoft':connectingOutlook()?'Abriendo Microsoft…':'Conectar Outlook'}}</button>@if(!outlook().configured){<small class="config-help">Agrega el Client ID y Client Secret en <code>backend/.env</code>. <a href="https://entra.microsoft.com/" target="_blank" rel="noopener">Abrir Microsoft Entra</a></small>}
+      }
+    </article>
+    <article class="card integration"><header><span class="logo file"><i class="bi bi-file-earmark-arrow-up"></i></span><i class="manual">DIRECTO</i></header><h2>Correo o documento</h2><p>Carga un `.eml`, PDF, CSV o TXT. Los archivos se procesan en memoria y no se conservan.</p><ul><li>PDF XTB con contraseña temporal</li><li>Correo EML de Hapi</li><li>Revisión antes de registrar</li></ul><button class="button secondary" (click)="chooseFile()"><i class="bi bi-folder2-open"></i> Seleccionar archivo</button></article>
+    <article class="card integration"><header><span class="logo graph"><i class="bi bi-shield-lock"></i></span><i class="advanced">SEGURO</i></header><h2>Validación automática</h2><p>La plataforma compara la orden, la cuenta y una huella única antes de guardarla.</p><ul><li>Evita duplicados</li><li>Solicita revisión si hay dudas</li><li>Reconstruye lotes FIFO</li></ul><button class="button secondary" disabled><i class="bi bi-check2-circle"></i> Activo</button></article>
+  </section>
+
+  <section class="card xtb-credential-panel">
+    <div class="credential-copy"><span class="logo graph"><i class="bi bi-file-earmark-lock2"></i></span><div><span>PDF PROTEGIDOS DE XTB</span><h2>Contraseña cifrada por cuenta</h2><p>Se cifra con AES-256-GCM antes de guardarse. La plataforma la usa únicamente en memoria para abrir los adjuntos XTB.</p></div></div>
+    @if(xtbPasswords().length){
+      <div class="credential-form">
+        <label class="field">Cuenta XTB<select [(ngModel)]="xtbAccountId"><option value="">Selecciona una cuenta</option>@for(account of xtbPasswords();track account.accountId){<option [value]="account.accountId">{{account.accountName}}</option>}</select></label>
+        <label class="field">Contraseña del PDF<input [(ngModel)]="xtbPassword" type="password" autocomplete="new-password" placeholder="No se mostrará después de guardarla"></label>
+        <button class="button primary" (click)="saveXtbPassword()" [disabled]="savingXtbPassword()||!xtbAccountId||!xtbPassword"><i class="bi bi-shield-lock"></i>{{savingXtbPassword()?'Cifrando…':selectedXtbPasswordStatus()?.configured?'Actualizar contraseña':'Guardar cifrada'}}</button>
+        @if(selectedXtbPasswordStatus()?.configured){<button class="button danger" (click)="removeXtbPassword()"><i class="bi bi-trash3"></i>Eliminar</button>}
+      </div>
+      @if(selectedXtbPasswordStatus()?.configured){<small class="credential-status"><i class="bi bi-check-circle-fill"></i> Contraseña configurada; nunca se devuelve al navegador.</small>}
+    }@else{<p class="credential-empty">Crea primero una cuenta de broker XTB en el módulo Cuentas.</p>}
+  </section>
+
+  <section class="card upload-panel">
+    <header><div><span>NUEVA IMPORTACIÓN</span><h2>Procesar archivo</h2></div><small>Máximo 12 MB · EML, PDF, CSV o TXT</small></header>
+    <input #fileInput type="file" accept=".eml,.pdf,.csv,.txt,message/rfc822,application/pdf,text/csv,text/plain" hidden (change)="fileSelected($event)">
+    <div class="upload-grid">
+      <label class="field">Broker<select [(ngModel)]="broker"><option value="HAPI">Hapi</option><option value="XTB">XTB</option></select></label>
+      <label class="field">Cuenta de destino<select [(ngModel)]="selectedAccountId"><option value="">Selecciona una cuenta</option>@for(account of accounts();track account.id){<option [value]="account.id">{{account.name}} · {{account.broker.name}}</option>}</select></label>
+      <label class="field">Contraseña del PDF XTB <span class="optional">opcional, no se guarda</span><input [(ngModel)]="documentPassword" type="password" autocomplete="off" placeholder="Solo si el documento está protegido"></label>
+      <button class="file-zone" (click)="chooseFile()"><i class="bi bi-cloud-arrow-up"></i><span>{{selectedFile?.name || 'Seleccionar correo o documento'}}</span><small>{{selectedFile ? ((selectedFile.size/1024)|number:'1.0-0') + ' KB' : 'El archivo se leerá únicamente en memoria'}}</small></button>
+    </div>
+    <footer><span>@if(!accounts().length){Primero debes asociar una cuenta de broker.}</span><button class="button primary" (click)="upload()" [disabled]="uploading()||!selectedFile||!selectedAccountId"><i class="bi" [class.bi-arrow-clockwise]="uploading()" [class.bi-stars]="!uploading()"></i>{{uploading()?'Procesando…':'Leer operaciones'}}</button></footer>
+  </section>
+
+  <section class="card history">
+    <header><div><span>HISTORIAL</span><h2>Importaciones recientes</h2></div><small>{{imports().length}} procesos</small></header>
+    <div class="batch-list">@for(batch of imports();track batch.id){<button (click)="openBatch(batch.id)" [class.active]="selectedBatch()?.id===batch.id"><span class="source"><i class="bi" [class.bi-envelope]="batch.source==='HAPI_EMAIL'||batch.source==='OUTLOOK'" [class.bi-file-earmark-pdf]="batch.source==='XTB_DOCUMENT'" [class.bi-filetype-csv]="batch.source==='FILE'"></i></span><div><strong>{{batch.fileName||'Correo reenviado'}}</strong><small>{{batch.createdAt|date:'d MMM y, HH:mm'}} · {{batch.totalRows}} filas</small></div><i class="status" [class.complete]="batch.status==='COMPLETED'">{{statusLabel(batch.status)}}</i><span class="counts"><b>{{batch.importedRows}}</b> registradas · <b>{{batch.duplicateRows}}</b> duplicadas</span><i class="bi bi-chevron-right"></i></button>}@empty{@if(!loading()){<div class="empty-state"><div class="empty-icon"><i class="bi bi-inbox"></i></div><h3>Aún no hay importaciones</h3><p>Carga un correo o configura el reenvío automático para comenzar.</p></div>}}</div>
+  </section>
+
+  @if(selectedBatch();as batch){
+    <section class="card review-panel">
+      <header><div><span>REVISIÓN</span><h2>{{batch.fileName||'Correo reenviado'}}</h2></div><div class="review-actions"><small>{{approvedCount()}} listas para registrar</small><button class="button primary" (click)="confirm()" [disabled]="confirming()||approvedCount()===0"><i class="bi bi-check2-all"></i>{{confirming()?'Registrando…':'Confirmar aprobadas'}}</button></div></header>
+      <div class="rows">@for(row of batch.rows||[];track row.id){<article [class.error]="row.status==='ERROR'" [class.duplicate]="row.status==='DUPLICATE'" [class.done]="!!row.transaction"><div class="row-head"><span>#{{row.rowNumber}}</span><strong>{{row.normalizedData['broker']}} · {{row.normalizedData['sourceSymbol']||'Símbolo pendiente'}}@if(row.normalizedData['marketDataMatch'];as match){<em class="market-link"><i class="bi bi-link-45deg"></i>{{match.name}} · {{match.providerSymbol}}</em>}</strong><i [class]="'row-status '+row.status.toLowerCase()">{{row.transaction?'Registrada':statusLabel(row.status)}}</i><small>Confianza {{row.confidence||0}}%</small></div><div class="row-fields"><label>Cuenta<select [(ngModel)]="row.normalizedData['accountId']" [disabled]="!canEdit(row)">@for(account of accounts();track account.id){<option [value]="account.id">{{account.name}}</option>}</select></label><label>Nombre de la empresa<input [(ngModel)]="row.normalizedData['assetName']" [disabled]="!canEdit(row)" placeholder="Ej. NVIDIA Corporation"></label><label>Símbolo real<input [(ngModel)]="row.normalizedData['symbol']" [disabled]="!canEdit(row)" placeholder="Ej. NVDA"></label><label>Símbolo Twelve Data<input [(ngModel)]="row.normalizedData['providerSymbol']" [disabled]="!canEdit(row)" placeholder="Ej. NVDA:NASDAQ"></label><label>Tipo<select [(ngModel)]="row.normalizedData['side']" [disabled]="!canEdit(row)"><option>BUY</option><option>SELL</option></select></label><label>Cantidad<input [(ngModel)]="row.normalizedData['quantity']" [disabled]="!canEdit(row)" type="number" step="any"></label><label>Precio<input [(ngModel)]="row.normalizedData['unitPrice']" [disabled]="!canEdit(row)" type="number" step="any"></label><label>Moneda<input [(ngModel)]="row.normalizedData['currencyCode']" [disabled]="!canEdit(row)"></label><label>Fecha UTC<input [(ngModel)]="row.normalizedData['executedAt']" [disabled]="!canEdit(row)"></label></div>@if(row.normalizedData['warnings']?.length){<p class="warnings"><i class="bi bi-exclamation-triangle"></i>{{row.normalizedData['warnings'].join(' ')}}</p>}@if(canEdit(row)){<footer><button class="button danger" (click)="reject(row)"><i class="bi bi-x-lg"></i> Rechazar</button><button class="button secondary" (click)="saveAndApprove(row)"><i class="bi bi-check2"></i> Validar en Twelve Data y aprobar</button></footer>}</article>}</div>
+    </section>
+  }
+</main>

@@ -1,0 +1,11 @@
+<section class="card live-positions">
+  <header><h2>Posiciones con precio de mercado</h2><span>@if(store.updatedAt()){Actualizado {{ store.updatedAt() | date:'HH:mm:ss' }}}</span></header>
+  <div class="table-scroll"><table><thead><tr><th>ACTIVO</th><th>CANTIDAD</th><th>COSTO PROM.</th><th>PRECIO ACTUAL</th><th>VALOR</th><th>GANANCIA NO REALIZADA</th><th>RENDIMIENTO</th><th></th></tr></thead><tbody>
+    @for(position of store.positions();track position.assetId;let i=$index){
+      <tr (click)="toggle(position.assetId)" [class.selected]="selectedAssetId()===position.assetId"><td><span class="asset-icon" [class.cyan]="i%3===1" [class.green]="i%3===2">{{position.symbol.slice(0,1)}}</span><div><strong>{{position.symbol}}</strong><small>{{position.name}}</small></div></td><td>{{position.quantity|number:'1.0-6'}}</td><td>{{position.averageCost|currency:position.currency:'symbol':'1.2-4'}}</td><td><strong>{{position.currentPrice|currency:position.currency:'symbol':'1.2-4'}}</strong><small [class.stale]="position.stale">{{position.stale?'Desactualizado':'Actual'}}</small></td><td>{{position.marketValue|currency:position.currency:'symbol':'1.2-2'}}</td><td><strong class="gain" [class.negative]="position.unrealizedGain<0">{{position.unrealizedGain|currency:position.currency:'symbol':'1.2-2'}}</strong></td><td><strong class="gain" [class.negative]="position.unrealizedReturnPercentage<0">{{position.unrealizedReturnPercentage>0?'+':''}}{{position.unrealizedReturnPercentage|number:'1.0-2'}}%</strong></td><td><i class="bi" [class.bi-chevron-down]="selectedAssetId()!==position.assetId" [class.bi-chevron-up]="selectedAssetId()===position.assetId"></i></td></tr>
+      @if(selectedAssetId()===position.assetId){<tr class="chart-row"><td colspan="8"><app-asset-price-chart [assetId]="position.assetId" [symbol]="position.symbol" /></td></tr>}
+    }
+  </tbody></table></div>
+  @if(!store.loading()&&!store.positions().length){<div class="empty-state"><div class="empty-icon"><i class="bi bi-graph-up"></i></div><h3>Sin posiciones abiertas</h3><p>Registra una compra para comenzar a seguir su precio de mercado.</p></div>}
+</section>
+

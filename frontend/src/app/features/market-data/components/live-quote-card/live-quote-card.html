@@ -1,0 +1,6 @@
+<article class="quote-card">
+  <header><div><strong>{{ quote().symbol }}</strong><small>{{ quote().name }}</small></div><span [class.stale]="quote().stale"><i class="bi bi-broadcast"></i>{{ quote().stale ? 'Último conocido' : 'En vivo' }}</span></header>
+  <div class="price">{{ quote().price | currency:quote().currency:'symbol':'1.2-4' }}</div>
+  <footer><b [class.negative]="(quote().percentChange || 0) < 0">{{ (quote().percentChange || 0) > 0 ? '+' : '' }}{{ quote().percentChange | number:'1.0-2' }}%</b><small>{{ quote().fetchedAt | date:'d MMM, HH:mm:ss' }}</small></footer>
+</article>
+

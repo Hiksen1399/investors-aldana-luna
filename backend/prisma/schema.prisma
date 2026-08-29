@@ -1,0 +1,645 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum WorkspaceType {
+  PERSONAL
+  SHARED
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+enum AssetType {
+  STOCK
+  ETF
+  FUND
+  BOND
+  CRYPTO
+  FOREX
+  COMMODITY
+  CASH
+  OTHER
+}
+
+enum TransactionType {
+  TRADE
+  DEPOSIT
+  WITHDRAWAL
+  DIVIDEND
+  INTEREST
+  FEE
+  TAX
+  CURRENCY_CONVERSION
+  TRANSFER
+  SPLIT
+  ADJUSTMENT
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TransactionStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+enum TransactionSource {
+  MANUAL
+  HAPI_EMAIL
+  XTB_DOCUMENT
+  OUTLOOK
+  FILE
+  API
+}
+
+enum ImportStatus {
+  QUEUED
+  PROCESSING
+  NEEDS_REVIEW
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportRowStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DUPLICATE
+  ERROR
+}
+
+enum ConnectionType {
+  FORWARDING
+  MICROSOFT_GRAPH
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+model User {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  email               String                   @unique @db.VarChar(320)
+  passwordHash        String                   @map("password_hash")
+  status              UserStatus               @default(ACTIVE)
+  failedLoginAttempts Int                      @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?                @map("locked_until") @db.Timestamptz(3)
+  emailVerifiedAt     DateTime?                @map("email_verified_at") @db.Timestamptz(3)
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(3)
+  profile             UserProfile?
+  sessions            Session[]
+  verificationTokens  EmailVerificationToken[]
+  resetTokens         PasswordResetToken[]
+  memberships         WorkspaceMember[]
+  ownedWorkspaces     Workspace[]              @relation("WorkspaceOwner")
+  emailConnections    EmailConnection[]
+  importBatches       ImportBatch[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  attachments         Attachment[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  userId           String    @id @map("user_id") @db.Uuid
+  fullName         String    @map("full_name") @db.VarChar(160)
+  timezone         String    @default("America/Bogota") @db.VarChar(80)
+  locale           String    @default("es-CO") @db.VarChar(12)
+  baseCurrencyCode String    @default("USD") @map("base_currency_code") @db.Char(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseCurrency     Currency  @relation(fields: [baseCurrencyCode], references: [code])
+
+  @@map("user_profiles")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(64)
+  ipAddress        String?   @map("ip_address") @db.VarChar(64)
+  userAgent        String?   @map("user_agent") @db.VarChar(500)
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at") @db.Timestamptz(3)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("sessions")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
+}
+
+model Workspace {
+  id          String            @id @default(uuid()) @db.Uuid
+  ownerUserId String            @map("owner_user_id") @db.Uuid
+  name        String            @db.VarChar(120)
+  type        WorkspaceType     @default(PERSONAL)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  owner       User              @relation("WorkspaceOwner", fields: [ownerUserId], references: [id])
+  members     WorkspaceMember[]
+  portfolios  Portfolio[]
+
+  @@index([ownerUserId])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @map("workspace_id") @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  role        WorkspaceRole @default(VIEWER)
+  invitedAt   DateTime      @default(now()) @map("invited_at") @db.Timestamptz(3)
+  acceptedAt  DateTime?     @map("accepted_at") @db.Timestamptz(3)
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+model Currency {
+  code          String              @id @db.Char(3)
+  name          String              @db.VarChar(80)
+  symbol        String              @db.VarChar(8)
+  decimalPlaces Int                 @default(2) @map("decimal_places")
+  isActive      Boolean             @default(true) @map("is_active")
+  profiles      UserProfile[]
+  portfolios    Portfolio[]
+  accounts      BrokerAccount[]
+  assets        Asset[]
+  transactions  Transaction[]
+  marketPrices  MarketPrice[]
+  latestQuotes  LatestMarketQuote[]
+  baseRates     ExchangeRate[]      @relation("BaseCurrency")
+  quoteRates    ExchangeRate[]      @relation("QuoteCurrency")
+
+  @@map("currencies")
+}
+
+model Broker {
+  id        String          @id @default(uuid()) @db.Uuid
+  slug      String          @unique @db.VarChar(40)
+  name      String          @db.VarChar(100)
+  isActive  Boolean         @default(true) @map("is_active")
+  metadata  Json?
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  accounts  BrokerAccount[]
+
+  @@map("brokers")
+}
+
+model Portfolio {
+  id               String              @id @default(uuid()) @db.Uuid
+  workspaceId      String              @map("workspace_id") @db.Uuid
+  name             String              @db.VarChar(120)
+  description      String?             @db.VarChar(500)
+  objective        String?             @db.VarChar(300)
+  baseCurrencyCode String              @default("USD") @map("base_currency_code") @db.Char(3)
+  archivedAt       DateTime?           @map("archived_at") @db.Timestamptz(3)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  baseCurrency     Currency            @relation(fields: [baseCurrencyCode], references: [code])
+  accounts         BrokerAccount[]
+  snapshots        PortfolioSnapshot[]
+  analyses         InvestmentAnalysis[]
+
+  @@index([workspaceId, archivedAt])
+  @@map("portfolios")
+}
+
+model BrokerAccount {
+  id                    String              @id @default(uuid()) @db.Uuid
+  portfolioId           String              @map("portfolio_id") @db.Uuid
+  brokerId              String              @map("broker_id") @db.Uuid
+  currencyCode          String              @map("currency_code") @db.Char(3)
+  name                  String              @db.VarChar(120)
+  externalAccountNumber String?             @map("external_account_number") @db.VarChar(100)
+  objective             String?             @db.VarChar(300)
+  autoImportEnabled     Boolean             @default(false) @map("auto_import_enabled")
+  archivedAt            DateTime?           @map("archived_at") @db.Timestamptz(3)
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  portfolio             Portfolio           @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  broker                Broker              @relation(fields: [brokerId], references: [id])
+  currency              Currency            @relation(fields: [currencyCode], references: [code])
+  transactions          Transaction[]
+  lots                  TransactionLot[]
+  credentials           BrokerCredential[]
+  importBatches         ImportBatch[]
+
+  @@index([portfolioId, archivedAt])
+  @@unique([brokerId, externalAccountNumber])
+  @@map("broker_accounts")
+}
+
+model Asset {
+  id           String               @id @default(uuid()) @db.Uuid
+  ticker       String               @map("symbol") @db.VarChar(30)
+  name         String               @db.VarChar(180)
+  type         AssetType            @map("asset_type")
+  currencyCode String               @map("currency_code") @db.Char(3)
+  exchange     String?              @map("exchange_code") @db.VarChar(80)
+  sector       String?              @db.VarChar(120)
+  isin         String?              @unique @db.VarChar(20)
+  isActive     Boolean              @default(true) @map("active")
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  currency     Currency             @relation(fields: [currencyCode], references: [code])
+  transactions Transaction[]
+  lots         TransactionLot[]
+  marketPrices MarketPrice[]
+  latestQuote  LatestMarketQuote?
+  providerSymbols AssetProviderSymbol[]
+  analyses     InvestmentAnalysis[]
+
+  @@unique([ticker, exchange, type])
+  @@index([ticker])
+  @@map("assets")
+}
+
+model Transaction {
+  id             String              @id @default(uuid()) @db.Uuid
+  accountId      String              @map("broker_account_id") @db.Uuid
+  assetId        String?             @map("asset_id") @db.Uuid
+  importRowId    String?             @unique @map("import_row_id") @db.Uuid
+  type           TransactionType
+  side           TradeSide?
+  status         TransactionStatus   @default(CONFIRMED)
+  source         TransactionSource   @default(MANUAL)
+  tradeAt        DateTime            @map("executed_at") @db.Timestamptz(3)
+  settledAt      DateTime?           @map("settled_at") @db.Timestamptz(3)
+  quantity       Decimal?            @db.Decimal(28, 10)
+  unitPrice      Decimal?            @map("unit_price") @db.Decimal(28, 10)
+  grossAmount    Decimal             @map("gross_amount") @db.Decimal(28, 10)
+  fees           Decimal             @default(0) @map("commission") @db.Decimal(28, 10)
+  taxes          Decimal             @default(0) @db.Decimal(28, 10)
+  netAmount      Decimal?            @map("net_amount") @db.Decimal(28, 10)
+  exchangeRate   Decimal             @default(1) @map("exchange_rate_to_base") @db.Decimal(28, 10)
+  currencyCode   String              @map("currency_code") @db.Char(3)
+  externalId     String?             @map("external_order_id") @db.VarChar(160)
+  notes          String?             @db.VarChar(1000)
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  account        BrokerAccount       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset          Asset?              @relation(fields: [assetId], references: [id])
+  currency       Currency            @relation(fields: [currencyCode], references: [code])
+  importRow      ImportRow?          @relation(fields: [importRowId], references: [id])
+  purchaseLot    TransactionLot?     @relation("PurchaseTransaction")
+  saleAllocations LotAllocation[]    @relation("SaleTransaction")
+
+  @@unique([accountId, externalId])
+  @@index([accountId, tradeAt])
+  @@index([assetId, tradeAt])
+  @@map("transactions")
+}
+
+model TransactionLot {
+  id                  String          @id @default(uuid()) @db.Uuid
+  accountId           String          @map("account_id") @db.Uuid
+  assetId             String          @map("asset_id") @db.Uuid
+  purchaseTransactionId String        @unique @map("purchase_transaction_id") @db.Uuid
+  acquiredAt          DateTime        @map("acquired_at") @db.Timestamptz(3)
+  originalQuantity    Decimal         @map("original_quantity") @db.Decimal(28, 10)
+  remainingQuantity   Decimal         @map("remaining_quantity") @db.Decimal(28, 10)
+  unitCost            Decimal         @map("unit_cost") @db.Decimal(28, 10)
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  account             BrokerAccount   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  asset               Asset           @relation(fields: [assetId], references: [id])
+  purchaseTransaction Transaction     @relation("PurchaseTransaction", fields: [purchaseTransactionId], references: [id], onDelete: Cascade)
+  allocations         LotAllocation[]
+
+  @@index([accountId, assetId, acquiredAt])
+  @@map("transaction_lots")
+}
+
+model LotAllocation {
+  id                String         @id @default(uuid()) @db.Uuid
+  lotId             String         @map("lot_id") @db.Uuid
+  saleTransactionId String         @map("sale_transaction_id") @db.Uuid
+  quantity          Decimal        @db.Decimal(28, 10)
+  unitCost          Decimal        @map("unit_cost") @db.Decimal(28, 10)
+  realizedGain      Decimal        @map("realized_gain") @db.Decimal(28, 10)
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  lot               TransactionLot @relation(fields: [lotId], references: [id], onDelete: Cascade)
+  saleTransaction   Transaction    @relation("SaleTransaction", fields: [saleTransactionId], references: [id], onDelete: Cascade)
+
+  @@unique([lotId, saleTransactionId])
+  @@map("lot_allocations")
+}
+
+model EmailConnection {
+  id                 String           @id @default(uuid()) @db.Uuid
+  userId             String           @map("user_id") @db.Uuid
+  type               ConnectionType
+  email              String?          @db.VarChar(320)
+  forwardingAddress  String?          @unique @map("forwarding_address") @db.VarChar(320)
+  encryptedSecretRef String?          @map("encrypted_secret_ref")
+  lastSyncedAt       DateTime?        @map("last_synced_at") @db.Timestamptz(3)
+  isActive           Boolean          @default(true) @map("is_active")
+  createdAt          DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages           EmailMessage[]
+
+  @@index([userId])
+  @@map("email_connections")
+}
+
+model BrokerCredential {
+  id                 String        @id @default(uuid()) @db.Uuid
+  accountId          String        @map("account_id") @db.Uuid
+  kind               String        @db.VarChar(50)
+  encryptedSecretRef String        @map("encrypted_secret_ref") @db.VarChar(500)
+  lastValidatedAt    DateTime?     @map("last_validated_at") @db.Timestamptz(3)
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  account            BrokerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, kind])
+  @@map("broker_credentials")
+}
+
+model EmailMessage {
+  id             String          @id @default(uuid()) @db.Uuid
+  connectionId   String          @map("connection_id") @db.Uuid
+  externalId     String          @map("external_id") @db.VarChar(300)
+  sender         String?         @db.VarChar(320)
+  subject        String?         @db.VarChar(500)
+  receivedAt     DateTime        @map("received_at") @db.Timestamptz(3)
+  contentHash    String          @map("content_hash") @db.VarChar(64)
+  processedAt    DateTime?       @map("processed_at") @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  connection     EmailConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  importBatches  ImportBatch[]
+
+  @@unique([connectionId, externalId])
+  @@index([contentHash])
+  @@map("email_messages")
+}
+
+model ImportBatch {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @map("user_id") @db.Uuid
+  accountId      String?         @map("account_id") @db.Uuid
+  emailMessageId String?         @map("email_message_id") @db.Uuid
+  source         TransactionSource
+  status         ImportStatus    @default(QUEUED)
+  fileName       String?         @map("file_name") @db.VarChar(300)
+  fileHash       String?         @map("file_hash") @db.VarChar(64)
+  totalRows      Int             @default(0) @map("total_rows")
+  importedRows   Int             @default(0) @map("imported_rows")
+  duplicateRows  Int             @default(0) @map("duplicate_rows")
+  reviewRows     Int             @default(0) @map("review_rows")
+  errorMessage   String?         @map("error_message") @db.VarChar(1000)
+  startedAt      DateTime?       @map("started_at") @db.Timestamptz(3)
+  completedAt    DateTime?       @map("completed_at") @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  account        BrokerAccount?  @relation(fields: [accountId], references: [id])
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailMessage   EmailMessage?   @relation(fields: [emailMessageId], references: [id])
+  rows           ImportRow[]
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([fileHash])
+  @@map("import_batches")
+}
+
+model ImportRow {
+  id             String          @id @default(uuid()) @db.Uuid
+  batchId        String          @map("batch_id") @db.Uuid
+  rowNumber      Int             @map("row_number")
+  rawData        Json            @map("raw_data")
+  normalizedData Json?           @map("normalized_data")
+  confidence     Decimal?        @db.Decimal(5, 2)
+  status         ImportRowStatus @default(PENDING)
+  duplicateKey   String?         @map("duplicate_key") @db.VarChar(200)
+  validationErrors Json?         @map("validation_errors")
+  reviewedAt     DateTime?       @map("reviewed_at") @db.Timestamptz(3)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  batch          ImportBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  transaction    Transaction?
+
+  @@unique([batchId, rowNumber])
+  @@index([status])
+  @@map("import_rows")
+}
+
+model AssetProviderSymbol {
+  id             String   @id @default(uuid()) @db.Uuid
+  assetId        String   @map("asset_id") @db.Uuid
+  provider       String   @db.VarChar(40)
+  providerSymbol String   @map("provider_symbol") @db.VarChar(100)
+  exchangeCode   String?  @map("exchange_code") @db.VarChar(80)
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerSymbol])
+  @@unique([assetId, provider])
+  @@index([assetId, active])
+  @@map("asset_provider_symbols")
+}
+
+model LatestMarketQuote {
+  assetId          String    @id @map("asset_id") @db.Uuid
+  price            Decimal   @db.Decimal(28, 10)
+  currencyCode     String    @map("currency_code") @db.Char(3)
+  openPrice        Decimal?  @map("open_price") @db.Decimal(28, 10)
+  highPrice        Decimal?  @map("high_price") @db.Decimal(28, 10)
+  lowPrice         Decimal?  @map("low_price") @db.Decimal(28, 10)
+  previousClose    Decimal?  @map("previous_close") @db.Decimal(28, 10)
+  change           Decimal?  @db.Decimal(28, 10)
+  percentChange    Decimal?  @map("percent_change") @db.Decimal(18, 8)
+  marketStatus     String?   @map("market_status") @db.VarChar(30)
+  provider         String    @db.VarChar(40)
+  providerTimestamp DateTime? @map("provider_timestamp") @db.Timestamptz(3)
+  fetchedAt        DateTime  @map("fetched_at") @db.Timestamptz(3)
+  isDelayed        Boolean   @default(false) @map("is_delayed")
+  delayMinutes     Int?      @map("delay_minutes")
+  rawResponse      Json?     @map("raw_response")
+  asset            Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  currency         Currency  @relation(fields: [currencyCode], references: [code])
+
+  @@index([fetchedAt])
+  @@map("latest_market_quotes")
+}
+
+model MarketPrice {
+  assetId      String   @map("asset_id") @db.Uuid
+  priceDatetime DateTime @map("price_datetime") @db.Timestamptz(3)
+  interval     String   @db.VarChar(20)
+  provider     String   @db.VarChar(40)
+  openPrice    Decimal  @map("open_price") @db.Decimal(28, 10)
+  highPrice    Decimal  @map("high_price") @db.Decimal(28, 10)
+  lowPrice     Decimal  @map("low_price") @db.Decimal(28, 10)
+  closePrice   Decimal  @map("close_price") @db.Decimal(28, 10)
+  volume       Decimal? @db.Decimal(28, 4)
+  currencyCode String   @map("currency_code") @db.Char(3)
+  fetchedAt    DateTime @map("fetched_at") @db.Timestamptz(3)
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  currency     Currency @relation(fields: [currencyCode], references: [code])
+
+  @@id([assetId, priceDatetime, interval, provider])
+  @@index([assetId, interval, priceDatetime(sort: Desc)])
+  @@map("market_prices")
+}
+
+model ExchangeRate {
+  id                String   @id @default(uuid()) @db.Uuid
+  baseCurrencyCode  String   @map("base_currency_code") @db.Char(3)
+  quoteCurrencyCode String   @map("quote_currency_code") @db.Char(3)
+  rate              Decimal  @db.Decimal(28, 10)
+  rateAt            DateTime @map("rate_at") @db.Timestamptz(3)
+  source            String   @db.VarChar(80)
+  fetchedAt         DateTime @default(now()) @map("fetched_at") @db.Timestamptz(3)
+  baseCurrency      Currency @relation("BaseCurrency", fields: [baseCurrencyCode], references: [code])
+  quoteCurrency     Currency @relation("QuoteCurrency", fields: [quoteCurrencyCode], references: [code])
+
+  @@unique([baseCurrencyCode, quoteCurrencyCode, rateAt, source])
+  @@map("exchange_rates")
+}
+
+model PortfolioSnapshot {
+  id             String    @id @default(uuid()) @db.Uuid
+  portfolioId    String    @map("portfolio_id") @db.Uuid
+  snapshotAt     DateTime  @map("snapshot_date") @db.Timestamptz(3)
+  contributed    Decimal   @db.Decimal(28, 10)
+  withdrawn      Decimal   @db.Decimal(28, 10)
+  marketValue    Decimal   @map("market_value") @db.Decimal(28, 10)
+  cashBalance    Decimal   @map("cash_balance") @db.Decimal(28, 10)
+  realizedGain   Decimal   @map("realized_gain") @db.Decimal(28, 10)
+  unrealizedGain Decimal   @map("unrealized_gain") @db.Decimal(28, 10)
+  dividends      Decimal   @db.Decimal(28, 10)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  portfolio      Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, snapshotAt])
+  @@index([portfolioId, snapshotAt])
+  @@map("portfolio_snapshots")
+}
+
+model InvestmentAnalysis {
+  id             String     @id @default(uuid()) @db.Uuid
+  portfolioId    String     @map("portfolio_id") @db.Uuid
+  assetId        String?    @map("asset_id") @db.Uuid
+  title          String     @db.VarChar(180)
+  entryReason    String?    @map("entry_reason")
+  strategy       String?    @db.VarChar(100)
+  tradingViewUrl String?    @map("trading_view_url") @db.VarChar(500)
+  targetPrice    Decimal?   @map("target_price") @db.Decimal(28, 10)
+  stopLoss       Decimal?   @map("stop_loss") @db.Decimal(28, 10)
+  horizon        String?    @db.VarChar(80)
+  riskLevel      String?    @map("risk_level") @db.VarChar(40)
+  comments       String?
+  finalResult    String?    @map("final_result")
+  lessonLearned  String?    @map("lesson_learned")
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  portfolio      Portfolio  @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  asset          Asset?     @relation(fields: [assetId], references: [id])
+
+  @@index([portfolioId, createdAt])
+  @@map("investment_analyses")
+}
+
+model Attachment {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerUserId String   @map("owner_user_id") @db.Uuid
+  storageKey  String   @unique @map("storage_key") @db.VarChar(500)
+  fileName    String   @map("file_name") @db.VarChar(300)
+  mimeType    String   @map("mime_type") @db.VarChar(120)
+  sizeBytes   BigInt   @map("size_bytes")
+  contentHash String   @map("content_hash") @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([contentHash])
+  @@map("attachments")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String   @db.VarChar(120)
+  entityType  String?  @map("entity_type") @db.VarChar(80)
+  entityId    String?  @map("entity_id") @db.VarChar(100)
+  ipAddress   String?  @map("ip_address") @db.VarChar(64)
+  userAgent   String?  @map("user_agent") @db.VarChar(500)
+  metadata    Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType @default(INFO)
+  title     String           @db.VarChar(180)
+  message   String           @db.VarChar(1000)
+  link      String?          @db.VarChar(500)
+  readAt    DateTime?        @map("read_at") @db.Timestamptz(3)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}

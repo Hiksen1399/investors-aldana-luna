@@ -1,0 +1,13 @@
+@if (store.loading()) {
+  <section class="live-strip skeleton"><span>Cargando precios de mercado…</span></section>
+} @else if (store.summary(); as summary) {
+  <section class="live-strip" [class.stale]="summary.stale">
+    <div class="status"><i class="bi" [class.bi-broadcast]="!summary.stale" [class.bi-exclamation-triangle]="summary.stale"></i><span>{{ summary.stale ? 'Últimos precios disponibles' : 'Precios de mercado actualizados' }}</span><small>{{ summary.updatedAt | date:'d MMM y, HH:mm:ss' }}</small></div>
+    <div><small>VALOR DE MERCADO</small><strong>{{ summary.marketValue | currency:summary.baseCurrency:'symbol':'1.2-2' }}</strong></div>
+    <div><small>NO REALIZADA</small><strong [class.negative]="summary.unrealizedGain < 0">{{ summary.unrealizedGain | currency:summary.baseCurrency:'symbol':'1.2-2' }}</strong></div>
+    <div><small>RETORNO TOTAL</small><strong [class.negative]="summary.totalReturnPercentage < 0">{{ summary.totalReturnPercentage > 0 ? '+' : '' }}{{ summary.totalReturnPercentage | number:'1.0-2' }}%</strong></div>
+    <button (click)="store.refresh()" [disabled]="store.refreshing()" title="Actualizar precios"><i class="bi bi-arrow-clockwise" [class.spin]="store.refreshing()"></i></button>
+  </section>
+}
+@if (store.error()) { <p class="live-warning"><i class="bi bi-exclamation-circle"></i> {{ store.error() }}</p> }
+

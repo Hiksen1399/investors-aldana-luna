@@ -1,0 +1,64 @@
+<main class="page dashboard">
+  <section class="dashboard-toolbar">
+    <div>
+      <span class="section-kicker">PANEL CONSOLIDADO</span>
+      <p>Última actualización {{ summary()?.updatedAt | date:'d MMM y, HH:mm' }}</p>
+    </div>
+    <div class="top-actions">
+      <label><span>PORTAFOLIO</span><select [value]="selectedPortfolioId()" (change)="selectPortfolio($event)">@for (portfolio of portfolios(); track portfolio.id) { <option [value]="portfolio.id">{{ portfolio.name }}</option> }</select></label>
+      <label><span>CUENTA</span><select [value]="selectedAccountId()" (change)="selectAccount($event)"><option value="">Todas las cuentas</option>@for (account of accounts(); track account.id) { <option [value]="account.id">{{ account.name }}</option> }</select></label>
+      <a class="button secondary" routerLink="/app/importaciones"><i class="bi bi-cloud-arrow-down"></i> Importar</a>
+      <a class="button primary" routerLink="/app/operaciones" [queryParams]="{nuevo: true}"><i class="bi bi-plus-lg"></i> Movimiento</a>
+    </div>
+  </section>
+
+  @if (error()) { <div class="error-banner">{{ error() }}</div> }
+  @if (!loading() && portfolios().length === 0) {
+    <section class="card empty-state"><div class="empty-icon"><i class="bi bi-briefcase"></i></div><h3>Crea tu primer portafolio</h3><p>Agrupa tus cuentas y operaciones para comenzar a medir el rendimiento.</p><a class="button primary" routerLink="/app/portafolios"><i class="bi bi-plus-lg"></i> Crear portafolio</a></section>
+  } @else {
+    <section class="kpi-grid">
+      <article class="kpi-card" [class.skeleton]="loading()">
+        <div class="kpi-icon purple"><i class="bi bi-wallet2"></i></div><span>Saldo total <button class="eye" (click)="privacy.set(!privacy())"><i class="bi" [class.bi-eye]="!privacy()" [class.bi-eye-slash]="privacy()"></i></button></span>
+        <strong>{{ money(summary()?.metrics?.currentValue) }}</strong>
+        <footer><small>Efectivo disponible</small><b>{{ money(summary()?.metrics?.cashBalance) }}</b></footer>
+      </article>
+      <article class="kpi-card" [class.skeleton]="loading()">
+        <div class="kpi-icon green"><i class="bi bi-graph-up-arrow"></i></div><span>Ganancia total</span>
+        <strong class="positive" [class.negative]="(summary()?.metrics?.totalGain || 0) < 0">{{ money(summary()?.metrics?.totalGain) }}</strong>
+        <footer><small>Desde el inicio</small><b class="positive" [class.negative]="(summary()?.metrics?.returnPercent || 0) < 0">{{ percent(summary()?.metrics?.returnPercent) }}</b></footer>
+      </article>
+      <article class="kpi-card" [class.skeleton]="loading()">
+        <div class="kpi-icon cyan"><i class="bi bi-pie-chart"></i></div><span>Rendimiento</span>
+        <strong class="positive" [class.negative]="(summary()?.metrics?.returnPercent || 0) < 0">{{ percent(summary()?.metrics?.returnPercent) }}</strong>
+        <footer><small>Dividendos acumulados</small><b class="positive">{{ money(summary()?.metrics?.dividends) }}</b></footer>
+      </article>
+    </section>
+
+    <app-portfolio-live-summary />
+
+    <section class="analytics-grid">
+      <article class="card history-card">
+        <header><h2>Evolución del portafolio</h2><div class="ranges">@for (item of ranges; track item) { <button [class.active]="range() === item" (click)="chooseRange(item)">{{ item }}</button> }</div></header>
+        <div class="chart-meta"><span><i class="portfolio-line"></i>Saldo total</span><span><i class="capital-line"></i>Capital aportado</span></div>
+        <div #historyChart class="chart"></div>
+        @if (!loading() && history().length === 0) { <div class="chart-empty">Los cierres mensuales aparecerán aquí.</div> }
+      </article>
+      <article class="card allocation-card">
+        <header><h2>Asignación por activo</h2><span>% del portafolio</span></header>
+        <div class="allocation-content">
+          <div class="donut" [style.background]="allocationGradient()"><div><strong>{{ money(summary()?.metrics?.currentValue) }}</strong><span>Total</span></div></div>
+          <div class="allocation-list">
+            @for (position of (summary()?.positions || []).slice(0, 4); track position.assetId; let i = $index) {
+              <div><i [class.cyan]="i === 1" [class.green]="i === 2" [class.yellow]="i === 3"></i><span><b>{{ position.ticker }}</b><small>{{ money(position.marketValue) }}</small></span><strong>{{ position.weight | number:'1.0-1' }}%</strong></div>
+            } @empty { <p>Agrega posiciones para ver la asignación.</p> }
+          </div>
+        </div>
+        <footer><span>Activos</span><strong>{{ summary()?.positions?.length || 0 }}</strong></footer>
+      </article>
+    </section>
+
+    <app-position-live-table />
+
+    <section class="card accounts-strip"><header><h2>Rendimiento por cuenta</h2><a routerLink="/app/cuentas">Gestionar cuentas <i class="bi bi-arrow-right"></i></a></header><div class="account-list">@for (account of summary()?.accounts || []; track account.id; let i = $index) { <article><span class="broker-badge" [class.cyan]="i % 2 === 1"><i class="bi bi-bank"></i></span><div><strong>{{ account.name }}</strong><small>{{ account.broker }} · {{ money(account.value) }}</small></div><b class="positive" [class.negative]="account.returnPercent < 0">{{ percent(account.returnPercent) }}</b></article> } @empty { <p>Agrega Hapi o XTB para separar tus estrategias.</p> }</div></section>
+  }
+</main>

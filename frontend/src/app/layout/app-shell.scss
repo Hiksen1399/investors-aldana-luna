@@ -1,0 +1,35 @@
+:host { display: block; min-height: 100vh; }
+.app-frame { min-height: 100vh; display: grid; grid-template-columns: 250px minmax(0, 1fr); background: transparent; }
+aside {
+  position: sticky; top: 0; height: 100vh; box-sizing: border-box; padding: 21px 12px 18px;
+  background: linear-gradient(180deg, rgba(5, 13, 21, .98), rgba(4, 10, 17, .99));
+  color: #cbd4df; display: flex; flex-direction: column; z-index: 20; border-right: 1px solid var(--line);
+}
+.brand { display: block; padding: 0 8px 22px; color: #f6f8fb; text-decoration: none; font-weight: 700; font-size: 20px; letter-spacing: -.7px; border-bottom: 1px solid var(--line); }
+nav { margin-top: 18px; display: grid; gap: 7px; }
+nav a { color: #aeb9c6; text-decoration: none; display: flex; align-items: center; gap: 13px; border: 1px solid transparent; border-radius: 8px; padding: 12px 13px; font-size: 12px; font-weight: 500; transition: .2s; }
+nav a i { width: 20px; text-align: center; font-size: 18px; line-height: 1; font-style: normal; color: #9ba8b7; }
+nav a:hover { color: #fff; background: rgba(255,255,255,.025); border-color: rgba(130,160,191,.1); }
+nav a.active { color: #f8f5ff; background: linear-gradient(90deg, rgba(110,73,218,.16), rgba(73,92,170,.11)); border-color: rgba(139, 92, 246, .22); box-shadow: inset 3px 0 var(--purple); }
+nav a.active i { color: var(--purple-light); filter: drop-shadow(0 0 6px rgba(139,92,246,.4)); }
+.register-movement { margin-top: auto; min-height: 48px; display: flex; align-items: center; justify-content: center; gap: 9px; color: #bd9cff; text-decoration: none; border: 1px solid #8659ed; border-radius: 8px; font-size: 11px; font-weight: 600; background: rgba(116, 72, 220, .055); box-shadow: 0 0 20px rgba(116,72,220,.08), inset 0 0 18px rgba(116,72,220,.025); }
+.register-movement:hover { color: #fff; background: rgba(116,72,220,.14); box-shadow: 0 0 25px rgba(116,72,220,.16); }
+.register-movement .bi { font-size: 15px; }
+.user-block { display: grid; grid-template-columns: 32px 1fr 24px; gap: 9px; align-items: center; border-top: 1px solid var(--line); margin-top: 15px; padding: 15px 4px 0; }
+.avatar { width: 31px; height: 31px; border-radius: 8px; display: grid; place-items: center; background: linear-gradient(145deg, #6f45d8, #2d789d); color: #fff; font-weight: 700; font-size: 11px; }
+.user-block strong, .user-block small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-block strong { color: #dfe5ec; font-size: 9px; }.user-block small { font-size: 7px; color: #647386; margin-top: 3px; }.user-block button { border: 0; background: none; color: #667589; cursor: pointer; font-size: 15px; }
+.content-area { min-width: 0; }
+.desktop-header { height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 27px; border-bottom: 1px solid var(--line); background: rgba(5, 12, 19, .7); backdrop-filter: blur(14px); position: sticky; top: 0; z-index: 12; }
+.desktop-header > strong { font-size: 12px; color: #e7ebf0; }.desktop-header div { display: flex; align-items: center; gap: 10px; color: #98a4b3; font-size: 10px; }.desktop-header i { width: 3px; height: 3px; background: #5f6b7b; border-radius: 50%; }.desktop-header button { margin-left: 8px; border: 0; background: none; color: #bdc7d2; font-size: 20px; cursor: pointer; }
+.mobile-header, .close-menu, .backdrop { display: none; }
+@media (max-width: 850px) {
+  .app-frame { grid-template-columns: 1fr; }
+  aside { position: fixed; left: 0; transform: translateX(-102%); width: 260px; transition: .25s; }
+  aside.open { transform: translateX(0); }
+  .close-menu { display: block; position: absolute; right: 15px; top: 16px; border: 0; background: none; color: #9aa7b7; font-size: 23px; }
+  .backdrop { display: block; position: fixed; inset: 0; border: 0; background: rgba(0, 5, 10, .7); z-index: 15; backdrop-filter: blur(3px); }
+  .desktop-header { display: none; }
+  .mobile-header { height: 58px; display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 8px; padding: 0 15px; background: rgba(5, 13, 21, .96); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 12; }
+  .mobile-header button { border: 0; background: none; font-size: 18px; color: #c6cfda; }.mobile-header strong { font-size: 13px; }.mobile-header span { color: var(--purple-light); font-size: 9px; }
+}

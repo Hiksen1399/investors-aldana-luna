@@ -15,7 +15,7 @@ function provider(results: ReturnType<typeof result>[]): MarketDataProvider {
   };
 }
 
-const operation = (text: string) => parseHapiEmail(text)[0]!.normalized;
+const operation = (text: string) => parseHapiEmail(`Order Executed\n${text}\nStatus: Order completed`)[0]!.normalized;
 
 describe('ImportAssetResolverService', () => {
   it('enlaza el ticker y el nombre con la empresa oficial de Twelve Data', async () => {
@@ -26,13 +26,14 @@ describe('ImportAssetResolverService', () => {
     const resolver = new ImportAssetResolverService(market);
     const resolved = await resolver.resolve(operation('Compra\nTicker: NVDA\nEmpresa: NVIDIA\nCantidad: 2\nPrecio: 190\nMoneda: USD\nOrden: H-1'));
     expect(resolved).toMatchObject({ symbol: 'NVDA', providerSymbol: 'NVDA:NASDAQ', assetName: 'NVIDIA Corporation', exchange: 'NASDAQ', currencyCode: 'USD' });
-    expect(resolved?.marketDataMatch).toMatchObject({ provider: 'TWELVE_DATA', country: 'United States', confidence: 100 });
+    expect(resolved?.marketDataMatch).toMatchObject({ provider: 'TWELVE_DATA', country: 'United States' });
+    expect(resolved!.marketDataMatch.confidence).toBeGreaterThanOrEqual(70);
     expect(market.searchSymbols).toHaveBeenCalledWith('NVDA', 30);
   });
 
-  it('no enlaza otra empresa aunque el ticker coincida', async () => {
+  it('ignora nombres extraños del correo y usa el nombre oficial del símbolo', async () => {
     const resolver = new ImportAssetResolverService(provider([result()]));
-    await expect(resolver.resolve(operation('Compra\nTicker: NVDA\nEmpresa: Tesla Motors\nCantidad: 1\nPrecio: 190\nOrden: H-2'))).resolves.toBeNull();
+    await expect(resolver.resolve(operation('Compra\nTicker: NVDA\nEmpresa: %2Fhapi-app%2Ftracking\nCantidad: 1\nPrecio: 190\nOrden: H-2'))).resolves.toMatchObject({ assetName: 'NVIDIA Corporation', symbol: 'NVDA' });
   });
 
   it('usa el sufijo del broker para elegir el país correcto', async () => {

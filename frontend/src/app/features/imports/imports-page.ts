@@ -81,11 +81,12 @@ export class ImportsPage {
 
   saveAndApprove(row: ImportRow) {
     const value = row.normalizedData;
+    const symbol = String(value['symbol'] || value['sourceSymbol'] || '').trim().toUpperCase();
     const payload = {
       accountId: value['accountId'] || this.selectedAccountId,
       externalAccountNumber: value['externalAccountNumber'] || undefined,
       externalOrderId: value['externalOrderId'] || undefined,
-      sourceSymbol: value['sourceSymbol'], symbol: value['symbol'], providerSymbol: value['providerSymbol'] || value['symbol'], assetName: value['assetName'] || value['symbol'], assetType: value['assetType'] || 'STOCK', exchange: value['exchange'] || undefined,
+      sourceSymbol: symbol, symbol, providerSymbol: symbol, assetName: symbol, assetType: value['assetType'] || 'STOCK', exchange: value['exchange'] || undefined,
       side: value['side'], quantity: String(value['quantity']), unitPrice: String(value['unitPrice']), grossAmount: String(value['grossAmount'] || Number(value['quantity']) * Number(value['unitPrice'])), fees: String(value['fees'] || 0), taxes: String(value['taxes'] || 0), currencyCode: value['currencyCode'] || 'USD', exchangeRate: String(value['exchangeRate'] || 1), executedAt: value['executedAt'],
     };
     this.api.updateImportRow(row.id, payload).subscribe({ next: () => this.refreshSelected(), error: (error) => this.error.set(error.error?.error?.message ?? 'Revisa los campos antes de aprobar.') });

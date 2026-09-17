@@ -275,7 +275,7 @@ export class ImportService {
           marketLinked = true;
         } else {
           operation.normalized.confidence = Math.min(operation.normalized.confidence, 92);
-          operation.normalized.warnings.push('Twelve Data no encontró una empresa coincidente; revisa el símbolo y el nombre.');
+          operation.normalized.warnings.push('Twelve Data no encontró una empresa coincidente; revisa el símbolo.');
         }
       } catch {
         operation.normalized.confidence = Math.min(operation.normalized.confidence, 92);

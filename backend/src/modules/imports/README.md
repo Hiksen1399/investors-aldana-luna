@@ -2,6 +2,8 @@
 
 El módulo convierte confirmaciones reales en transacciones del portafolio. No crea operaciones de demostración.
 
+Para Hapi se aceptan únicamente mensajes cuya operación ya fue ejecutada (`Order Executed`, `Order completed` o sus equivalentes en español). Los avisos `Order Placed`/`Order submitted` se descartan porque todavía no representan una compra o venta definitiva. El correo aporta el ticker; el nombre de la empresa, mercado, moneda y símbolo del proveedor se toman exclusivamente de la validación de Twelve Data.
+
 ## Flujo disponible
 
 1. El usuario carga un archivo o reenvía un correo a su dirección privada.

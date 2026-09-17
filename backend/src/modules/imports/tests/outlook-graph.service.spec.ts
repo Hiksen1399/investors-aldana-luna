@@ -57,12 +57,15 @@ describe('OutlookGraphService', () => {
     expect(repository.updateMicrosoftConnection).toHaveBeenCalledWith('connection-1', expect.objectContaining({ encryptedSecretRef: 'encrypted-cache-updated', lastSyncedAt: expect.any(Date) }));
   });
 
-  it('acepta confirmaciones y excluye dividendos, extractos y publicidad', () => {
+  it('acepta Order Executed y excluye Order Placed, dividendos, extractos y publicidad', () => {
+    expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: '✅ Order Executed' })).toBe(true);
+    expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: '⏳ Order Placed' })).toBe(false);
     expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: 'Tu orden de compra fue ejecutada' })).toBe(true);
     expect(isBrokerTradeMessage({ sender: 'reports@mail.xtb.com', subject: 'Confirmación de operaciones' })).toBe(true);
     expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: 'Dividend from QQQ received!' })).toBe(false);
     expect(isBrokerTradeMessage({ senderName: 'Hapi Securities', subject: 'Your statement from Hapi is ready!' })).toBe(false);
     expect(isExplicitlyNonTradeMessage({ sender: 'news@imhapi.app', subject: 'Sé de los primeros en depositar' })).toBe(true);
+    expect(isExplicitlyNonTradeMessage({ sender: 'no-reply@hapi.trade', subject: '⏳ Order Placed' })).toBe(true);
   });
 
   it('informa cuando faltan las credenciales de Microsoft', async () => {

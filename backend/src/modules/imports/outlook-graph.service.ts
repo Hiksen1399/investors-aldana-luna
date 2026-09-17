@@ -30,16 +30,18 @@ export type OutlookSyncOptions = { lookbackMonths?: number };
 type MsalClientFactory = () => ConfidentialClientApplication;
 
 const normalized = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-const explicitNonTradePattern = /\b(dividend|dividendo|statement|estado de cuenta|extracto|important information|informacion importante|cambios legales|deposit|depositar|deposito|withdrawal|retiro|proxy|vote|votacion|tax document|documento fiscal|promocion|newsletter|webinar|market update)\b/i;
+const explicitNonTradePattern = /\b(dividend|dividendo|statement|estado de cuenta|extracto|important information|informacion importante|cambios legales|deposit|depositar|deposito|withdrawal|retiro|proxy|vote|votacion|tax document|documento fiscal|promocion|newsletter|webinar|market update|order placed|order submitted|orden colocada|orden enviada|orden recibida)\b/i;
 const tradePattern = /\b(compra|compraste|comprada|venta|vendiste|vendida|buy|bought|sell|sold|order|orden|trade|operacion|transaction|confirmacion|confirmation|execution|ejecutada|ejecutado|contract note)\b/i;
 const brokerPattern = /(?:^|[@.\s_-])(hapi|xtb)(?:[.@\s_-]|$)/i;
+const executedOrderPattern = /\b(order executed|order has been executed|order completed|orden(?: de (?:compra|venta))? (?:(?:ha sido|fue) )?ejecutad[ao]|orden completad[ao])\b/i;
 
 export const isExplicitlyNonTradeMessage = (input: { sender?: string | null; subject?: string | null }) =>
   explicitNonTradePattern.test(normalized(`${input.sender ?? ''} ${input.subject ?? ''}`));
 
 export const isBrokerTradeMessage = (input: { sender?: string | null; senderName?: string | null; subject?: string | null }) => {
   const value = normalized(`${input.sender ?? ''} ${input.senderName ?? ''} ${input.subject ?? ''}`);
-  return brokerPattern.test(value) && !explicitNonTradePattern.test(value) && tradePattern.test(value);
+  if (!brokerPattern.test(value) || explicitNonTradePattern.test(value)) return false;
+  return /hapi/i.test(value) ? executedOrderPattern.test(value) : tradePattern.test(value);
 };
 
 export class OutlookGraphService {

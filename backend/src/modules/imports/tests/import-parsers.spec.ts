@@ -8,6 +8,7 @@ describe('import parsers', () => {
   it('ignora correos Hapi que no contienen una compra o venta completa', () => {
     expect(parseHapiEmail('Dividend from QQQ received!')).toEqual([]);
     expect(parseHapiEmail('Sé de los primeros en depositar desde tu banco americano.')).toEqual([]);
+    expect(parseHapiEmail('Order Placed\nBuy/Sell: Buy\nTicker: NVDA\nQuantity Shares: 1\nAverage price: US$ 100')).toEqual([]);
   });
 
   it('extrae una compra realista del cuerpo de Hapi', () => {
@@ -19,8 +20,21 @@ Precio promedio: USD 189.075
 Valor total: USD 15.315
 Número de orden: HAPI-10992
 Fecha: 12/07/2026 10:30`, new Date('2026-07-12T15:30:00Z'));
-    expect(row?.normalized).toMatchObject({ broker: 'HAPI', symbol: 'NVDA', assetName: 'NVIDIA Corporation', side: 'BUY', quantity: '0.081', unitPrice: '189.075', externalOrderId: 'HAPI-10992' });
+    expect(row?.normalized).toMatchObject({ broker: 'HAPI', symbol: 'NVDA', assetName: 'NVDA', side: 'BUY', quantity: '0.081', unitPrice: '189.075', externalOrderId: 'HAPI-10992' });
     expect(row!.normalized.confidence).toBeGreaterThanOrEqual(98);
+  });
+
+  it('lee el valor Sell después de Buy/Sell en el formato real de Order Executed', () => {
+    const [row] = parseHapiEmail(`✅ Order Executed
+Your order has been executed. You are now a shareholder of:
+Order type: Market order
+Buy/Sell: Sell
+Ticker: NVDA
+Quantity Shares: 0.1
+Average price: US$ 227.73450
+Cost: US$ 22.77
+Status: Order completed`);
+    expect(row?.normalized).toMatchObject({ sourceSymbol: 'NVDA', symbol: 'NVDA', assetName: 'NVDA', side: 'SELL', quantity: '0.1', unitPrice: '227.7345' });
   });
 
   it('extrae varias órdenes XTB y obliga a mapear el sufijo del broker', () => {
@@ -59,7 +73,7 @@ Date: 12/07/2026 12:00`);
   });
 
   it('produce la misma huella para la misma orden', () => {
-    const operation = parseHapiEmail('Compra\nTicker: KO\nCantidad: 2\nPrecio: 70\nOrden: ABC-123')[0]!.normalized;
+    const operation = parseHapiEmail('Orden ejecutada\nCompra\nTicker: KO\nCantidad: 2\nPrecio: 70\nOrden: ABC-123')[0]!.normalized;
     expect(duplicateKey(operation, 'account-1')).toBe(duplicateKey(operation, 'account-1'));
     expect(duplicateKey(operation, 'account-1')).not.toBe(duplicateKey(operation, 'account-2'));
   });

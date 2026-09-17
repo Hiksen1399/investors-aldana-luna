@@ -3,10 +3,11 @@ import { calculateConfidence, extract, parseFinancialNumber, parseOperationDate 
 
 export function parseHapiEmail(text: string, receivedAt = new Date()): ParsedImportOperation[] {
   const clean = text.replace(/\r/g, '').replace(/\u00a0/g, ' ');
-  const sideText = extract(clean, [/(?:tipo de (?:operaci[oó]n|orden)|operaci[oó]n|lado|side)\s*[:\-]?\s*(compra|venta|buy|sell)/i, /\b(compraste|vendiste|compra|venta|buy|sell)\b/i]);
+  const executionConfirmed = /\b(?:order\s+(?:has\s+been\s+)?executed|order\s+completed|orden(?:\s+de\s+(?:compra|venta))?\s+(?:(?:ha\s+sido|fue)\s+)?ejecutad[ao]|orden\s+completad[ao])\b/i.test(clean);
+  if (!executionConfirmed) return [];
+  const sideText = extract(clean, [/(?:buy\s*\/\s*sell|compra\s*\/\s*venta)\s*[:\-]?\s*(buy|sell|compra|venta)/i, /(?:tipo de (?:operaci[oó]n|orden)|operaci[oó]n|lado|side)\s*[:\-]?\s*(compra|venta|buy|sell)/i, /\b(compraste|vendiste)\b/i, /\b(compra|venta|buy|sell)\b/i]);
   const side = /venta|sell|vendiste/i.test(sideText ?? '') ? 'SELL' : 'BUY';
   const symbol = extract(clean, [/(?:ticker|s[ií]mbolo|symbol)\s*[:\-]?\s*\$?([A-Z][A-Z0-9.-]{0,20})/i, /(?:activo|instrumento)\s*[:\-]?\s*\$?([A-Z][A-Z0-9.-]{0,20})\s*(?:\n|$)/i, /\$([A-Z]{1,10})\b/]);
-  const assetName = extract(clean, [/(?:empresa|nombre (?:de la empresa|del activo)|compañ[ií]a|company|security name)\s*[:\-]?\s*([^\n]{2,180})/i, /(?:activo|instrumento)\s*[:\-]?\s*([^\n]{2,180})/i]);
   const quantity = parseFinancialNumber(extract(clean, [/(?:cantidad|quantity|acciones|shares)\s*[:\-]?\s*([\d.,]+)/i]));
   const unitPrice = parseFinancialNumber(extract(clean, [/(?:precio(?:\s+(?:promedio|unitario|de ejecuci[oó]n))?|average price|unit price|price)\s*[:\-]?\s*(?:US\$|USD|\$)?\s*([\d.,]+)/i]));
   const totalValue = extract(clean, [/(?:valor total|monto total|total|importe)\s*[:\-]?\s*(?:US\$|USD|\$)?\s*([\d.,]+)/i]);
@@ -22,7 +23,7 @@ export function parseHapiEmail(text: string, receivedAt = new Date()): ParsedImp
   return [{
     raw: { broker: 'HAPI', text: clean.slice(0, 12_000) },
     normalized: {
-      broker: 'HAPI', externalOrderId: orderId, sourceSymbol: symbol ?? '', symbol: symbol ?? '', providerSymbol: symbol ?? '', assetName: assetName ?? symbol ?? 'Activo por revisar', assetType: 'STOCK', side,
+      broker: 'HAPI', externalOrderId: orderId, sourceSymbol: symbol ?? '', symbol: symbol ?? '', providerSymbol: symbol ?? '', assetName: symbol ?? 'Activo por revisar', assetType: 'STOCK', side,
       quantity, unitPrice, grossAmount, fees: '0', taxes: '0', currencyCode: currency, exchangeRate: '1', executedAt: parseOperationDate(date, receivedAt), confidence, warnings,
     },
   }];

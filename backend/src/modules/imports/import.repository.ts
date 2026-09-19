@@ -51,8 +51,16 @@ export class ImportRepository {
   listBrokerCredentials(userId: string, broker: string, kind: string) {
     return prisma.brokerCredential.findMany({
       where: { kind, account: { broker: { slug: broker }, archivedAt: null, portfolio: { workspace: { members: { some: { userId } } } } } },
-      select: { id: true, accountId: true, encryptedSecretRef: true },
+      select: { id: true, accountId: true, encryptedSecretRef: true, account: { select: { externalAccountNumber: true } } },
     });
+  }
+
+  async listBrokerAccountNumbers(userId: string, broker: string) {
+    const accounts = await prisma.brokerAccount.findMany({
+      where: { broker: { slug: broker }, archivedAt: null, externalAccountNumber: { not: null }, portfolio: { workspace: { members: { some: { userId } } } } },
+      select: { externalAccountNumber: true },
+    });
+    return accounts.flatMap((account) => account.externalAccountNumber ? [account.externalAccountNumber] : []);
   }
 
   upsertBrokerCredential(accountId: string, kind: string, encryptedSecretRef: string) {
@@ -132,6 +140,17 @@ export class ImportRepository {
 
   markEmailProcessed(id: string) {
     return prisma.emailMessage.update({ where: { id }, data: { processedAt: new Date() } });
+  }
+
+  listImportsByEmail(emailMessageId: string) {
+    return prisma.importBatch.findMany({
+      where: { emailMessageId },
+      select: {
+        id: true,
+        status: true,
+        rows: { select: { normalizedData: true, transaction: { select: { id: true } } } },
+      },
+    });
   }
 
   listOutlookImportsForCleanup(userId: string) {

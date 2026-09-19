@@ -7,6 +7,7 @@ export const XTB_PDF_PASSWORD_KIND = 'XTB_PDF_PASSWORD';
 export type XtbPdfPasswordCandidate = {
   credentialId: string;
   accountId: string;
+  externalAccountNumber?: string;
   password: string;
 };
 
@@ -54,6 +55,7 @@ export class XtbPdfCredentialService {
         candidates.push({
           credentialId: credential.id,
           accountId: credential.accountId,
+          externalAccountNumber: credential.account.externalAccountNumber ?? undefined,
           password: this.vault.decrypt(credential.encryptedSecretRef, this.purpose(credential.accountId)),
         });
       } catch {

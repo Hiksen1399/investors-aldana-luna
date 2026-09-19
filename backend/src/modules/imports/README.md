@@ -17,7 +17,7 @@ Una coincidencia por ticker no es suficiente cuando el correo también contiene 
 
 Se aceptan archivos `.eml`, `.pdf`, `.csv` y `.txt`, con un máximo de 12 MB. Una contraseña introducida en la carga manual se utiliza solo durante esa lectura. También puede guardarse por cuenta XTB para la sincronización automática: se cifra con AES-256-GCM antes de persistirla en `broker_credentials` y nunca se devuelve al navegador.
 
-Los adjuntos recibidos desde Outlook o por webhook se leen en memoria y no se almacenan. Si hay varias cuentas XTB, el lector prueba sus secretos cifrados sin exponerlos y registra cuál logró abrir correctamente el documento.
+Los adjuntos recibidos desde Outlook o por webhook se leen en memoria y no se almacenan. Para XTB se acepta exclusivamente el remitente `dailystatements@mail.xtb.com`, el asunto `Confirmación de ejecución de orden - <cuenta>` y el adjunto `<cuenta>_AAAAMMDD_DailyStatement.pdf`. La cuenta del asunto y del archivo debe existir en la plataforma; el lector usa únicamente su secreto cifrado y extrae cada compra o venta de la tabla del informe.
 
 ## Conexión gratuita con Outlook mediante Microsoft Graph
 
@@ -51,7 +51,9 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 Reinicia el backend y pulsa **Conectar Outlook** en la pantalla de Importaciones. La sincronización programada consulta solamente mensajes nuevos cada cinco minutos. Desde la interfaz puedes buscar operaciones de los últimos 1, 3, 6, 12, 24 o 60 meses; la consulta pagina hasta 5.000 mensajes por ejecución.
 
-Antes de buscar confirmaciones históricas XTB, selecciona la cuenta y guarda la contraseña del PDF en **Contraseña cifrada por cuenta**. Al guardar o actualizarla se vuelven a intentar los documentos protegidos. La búsqueda excluye dividendos, extractos, comunicaciones legales y publicidad; además elimina del historial los falsos positivos anteriores que no hayan creado transacciones.
+Antes de buscar confirmaciones históricas XTB, registra en **Cuentas** el mismo número que aparece en el asunto del correo y guarda la contraseña del PDF en **Contraseña cifrada por cuenta**. Al guardar o actualizarla se vuelven a intentar los documentos protegidos. Si XTB rechaza la clave, la interfaz indica el número exacto que debe corregirse. La búsqueda excluye otras cuentas, dividendos, extractos, comunicaciones legales y publicidad; además elimina del historial los falsos positivos anteriores que no hayan creado transacciones.
+
+Un informe XTB que no puede descifrarse permanece visible en el historial con estado **Fallida**. No se inventan filas mientras el PDF esté cerrado. Al actualizar la contraseña, el mismo correo se reintenta: el fallo anterior se reemplaza por una fila de revisión por cada operación encontrada, usando el mismo formulario de validación que Hapi.
 
 ## Reenvío automático desde Outlook
 

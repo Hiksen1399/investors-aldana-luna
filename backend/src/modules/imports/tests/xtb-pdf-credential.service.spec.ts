@@ -18,11 +18,11 @@ describe('XtbPdfCredentialService', () => {
   });
 
   it('descifra las candidatas solo al procesar documentos', async () => {
-    const repository = { listBrokerCredentials: vi.fn().mockResolvedValue([{ id: 'credential-1', accountId: 'account-1', encryptedSecretRef: 'ciphertext-only' }]) };
+    const repository = { listBrokerCredentials: vi.fn().mockResolvedValue([{ id: 'credential-1', accountId: 'account-1', encryptedSecretRef: 'ciphertext-only', account: { externalAccountNumber: '53604716' } }]) };
     const vault = { decrypt: vi.fn().mockReturnValue('pdf-password') };
     const service = new XtbPdfCredentialService(repository as never, vault as never);
 
-    await expect(service.candidates('user-1')).resolves.toEqual([{ credentialId: 'credential-1', accountId: 'account-1', password: 'pdf-password' }]);
+    await expect(service.candidates('user-1')).resolves.toEqual([{ credentialId: 'credential-1', accountId: 'account-1', externalAccountNumber: '53604716', password: 'pdf-password' }]);
     expect(vault.decrypt).toHaveBeenCalledWith('ciphertext-only', 'xtb-pdf-password:account-1');
   });
 });

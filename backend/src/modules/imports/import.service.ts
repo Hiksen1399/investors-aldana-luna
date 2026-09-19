@@ -15,9 +15,10 @@ import { extractPdfText } from './parsers/pdf-text.extractor.js';
 import { parseXtbDocument } from './parsers/xtb-document.parser.js';
 import { importAssetResolverService, type ImportAssetResolverService, type ResolvedImportAsset } from './import-asset-resolver.service.js';
 import { xtbPdfCredentialService, type XtbPdfCredentialService, type XtbPdfPasswordCandidate } from './xtb-pdf-credential.service.js';
+import { isXtbDailyStatement, isXtbExecutionEmail, xtbExecutionAccountNumber, xtbStatementAccountNumber } from './xtb-email.policy.js';
 
 type UploadFile = { originalname: string; mimetype: string; buffer: Buffer; size: number };
-type PasswordCandidate = Pick<XtbPdfPasswordCandidate, 'password'> & { credentialId?: string };
+type PasswordCandidate = Pick<XtbPdfPasswordCandidate, 'password'> & { credentialId?: string; accountId?: string; externalAccountNumber?: string };
 type ParsedFileResult = {
   operations: ParsedImportOperation[];
   source: 'HAPI_EMAIL' | 'XTB_DOCUMENT' | 'FILE';
@@ -49,7 +50,10 @@ export class ImportService {
     const fileHash = hash(file.buffer);
     const duplicate = await this.repository.findByFileHash(userId, fileHash);
     if (duplicate) return { ...duplicate, duplicateBatch: true };
-    const parsed = await this.parseFile(file, input.broker, input.documentPassword ? [{ password: input.documentPassword }] : []);
+    const passwordCandidates = input.documentPassword
+      ? [{ password: input.documentPassword }]
+      : input.broker === 'XTB' ? await this.xtbCredentials.candidates(userId) : [];
+    const parsed = await this.parseFile(file, input.broker, passwordCandidates);
     if (!parsed.operations.length) throw new HttpError(422, 'No encontramos operaciones reconocibles en el archivo.', 'NO_OPERATIONS_FOUND');
     return this.createBatchFromOperations(userId, parsed.operations, { accountId: input.accountId, source: parsed.source, fileName: file.originalname, fileHash });
   }
@@ -156,13 +160,19 @@ export class ImportService {
     const email = await this.repository.createEmailMessage({ connectionId: connection.id, externalId: payload.messageId ?? contentHash, sender: payload.from, subject: payload.subject, receivedAt, contentHash });
     if (email.duplicate) throw new HttpError(409, 'El correo ya fue procesado.', 'DUPLICATE_EMAIL');
     const broker: ImportBroker = /xtb/i.test(`${payload.from} ${payload.subject}`) ? 'XTB' : 'HAPI';
+    if (broker === 'XTB' && !isXtbExecutionEmail(payload.from, payload.subject)) {
+      await this.repository.markEmailProcessed(email.message.id);
+      throw new HttpError(422, 'Solo se procesan los informes diarios de ordenes ejecutadas enviados por XTB.', 'NO_OPERATIONS_FOUND');
+    }
     let operations: ParsedImportOperation[] = [];
     const passwordCandidates = broker === 'XTB' ? await this.xtbCredentials.candidates(connection.userId) : [];
+    const expectedXtbAccount = broker === 'XTB' ? xtbExecutionAccountNumber(payload.from, payload.subject) : undefined;
     const validatedCredentialIds = new Set<string>();
     for (const attachment of payload.attachments ?? []) {
       const buffer = Buffer.from(attachment.contentBase64, 'base64');
       if (buffer.byteLength > 12 * 1024 * 1024) throw new HttpError(413, 'Un adjunto supera el límite de 12 MB.', 'FILE_TOO_LARGE');
       if (!this.isSupportedImportFile(attachment.filename, attachment.contentType ?? 'application/octet-stream')) continue;
+      if (broker === 'XTB' && !isXtbDailyStatement(attachment.filename, expectedXtbAccount)) continue;
       const parsed = await this.parseFile({ originalname: attachment.filename, mimetype: attachment.contentType ?? 'application/octet-stream', buffer, size: buffer.byteLength }, broker, passwordCandidates);
       operations.push(...parsed.operations);
       parsed.validatedCredentialIds.forEach((id) => validatedCredentialIds.add(id));
@@ -179,7 +189,16 @@ export class ImportService {
     if (input.mime.byteLength > 12 * 1024 * 1024) throw new HttpError(413, 'El correo supera el límite de 12 MB.', 'FILE_TOO_LARGE');
     const contentHash = hash(input.mime);
     const email = await this.repository.createEmailMessage({ connectionId, externalId: input.externalId, sender: input.sender, subject: input.subject, receivedAt: input.receivedAt, contentHash });
-    if (email.duplicate) return { duplicate: true as const, batch: null };
+    if (email.duplicate) {
+      const xtbAccountNumber = xtbExecutionAccountNumber(input.sender, input.subject);
+      if (!xtbAccountNumber) return { duplicate: true as const, batch: null };
+      const previousImports = await this.repository.listImportsByEmail(email.message.id);
+      const retryableImports = previousImports.filter((batch) => batch.status === 'FAILED' || (
+        !batch.rows.some((row) => row.transaction) && batch.rows.some((row) => this.isMalformedXtbRow(row.normalizedData))
+      ));
+      if (!retryableImports.length) return { duplicate: true as const, batch: null };
+      await this.repository.deleteImportBatches(retryableImports.map((batch) => batch.id));
+    }
     try {
       const passwordCandidates = await this.xtbCredentials.candidates(userId);
       const parsed = await this.parseFile({ originalname: 'outlook-message.eml', mimetype: 'message/rfc822', buffer: input.mime, size: input.mime.byteLength }, undefined, passwordCandidates);
@@ -192,9 +211,45 @@ export class ImportService {
       await this.repository.markEmailProcessed(email.message.id);
       return { duplicate: false as const, batch, ignored: false as const };
     } catch (error) {
-      await this.repository.deleteEmailMessage(email.message.id).catch(() => undefined);
+      await this.recordFailedXtbImport(userId, email.message.id, input, contentHash, error);
       throw error;
     }
+  }
+
+  private async recordFailedXtbImport(userId: string, emailMessageId: string, input: { sender: string; subject?: string }, contentHash: string, error: unknown) {
+    const accountNumber = xtbExecutionAccountNumber(input.sender, input.subject);
+    if (!accountNumber || !(error instanceof HttpError)) {
+      await this.repository.deleteEmailMessage(emailMessageId).catch(() => undefined);
+      return;
+    }
+    const account = await this.repository.findAccount(userId, { externalAccountNumber: accountNumber, broker: 'XTB' });
+    const batch = await this.repository.createBatch({
+      userId,
+      accountId: account?.id,
+      emailMessageId,
+      source: 'OUTLOOK',
+      fileName: input.subject ?? `Informe diario XTB - ${accountNumber}`,
+      fileHash: contentHash,
+    });
+    await this.repository.updateBatch(batch.id, {
+      status: 'FAILED',
+      totalRows: 0,
+      reviewRows: 0,
+      errorMessage: error.message,
+      completedAt: new Date(),
+    });
+    await this.repository.markEmailProcessed(emailMessageId);
+  }
+
+  private isMalformedXtbRow(value: Prisma.JsonValue | null) {
+    const normalized = asObject(value);
+    const sourceSymbol = String(normalized['sourceSymbol'] ?? '').toLowerCase();
+    const accountNumber = String(normalized['externalAccountNumber'] ?? '').toLowerCase();
+    const quantity = Number(normalized['quantity'] ?? 0);
+    const unitPrice = Number(normalized['unitPrice'] ?? 0);
+    return !Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0
+      || ['nombre', 'sistema', 'ticker', 'instrumento'].includes(sourceSymbol)
+      || accountNumber === 'divisa';
   }
 
   private async parseFile(file: UploadFile, broker?: ImportBroker, passwordCandidates: PasswordCandidate[] = []): Promise<ParsedFileResult> {
@@ -202,11 +257,15 @@ export class ImportService {
     if (extension === 'eml' || file.mimetype === 'message/rfc822') {
       const email = await simpleParser(file.buffer);
       const detected: ImportBroker = broker ?? (/xtb/i.test(`${email.from?.text} ${email.subject}`) ? 'XTB' : 'HAPI');
+      const sender = email.from?.value[0]?.address ?? email.from?.text;
+      const expectedXtbAccount = detected === 'XTB' ? xtbExecutionAccountNumber(sender, email.subject) : undefined;
+      if (detected === 'XTB' && !expectedXtbAccount) return { operations: [], source: 'XTB_DOCUMENT', validatedCredentialIds: [] };
       const attachmentRows: ParsedImportOperation[] = [];
       const validatedCredentialIds = new Set<string>();
       for (const attachment of email.attachments) {
         const filename = attachment.filename ?? 'attachment';
         if (!this.isSupportedImportFile(filename, attachment.contentType)) continue;
+        if (detected === 'XTB' && !isXtbDailyStatement(filename, expectedXtbAccount)) continue;
         const parsed = await this.parseFile({ originalname: filename, mimetype: attachment.contentType, buffer: attachment.content, size: attachment.size }, detected, passwordCandidates);
         attachmentRows.push(...parsed.operations);
         parsed.validatedCredentialIds.forEach((id) => validatedCredentialIds.add(id));
@@ -216,8 +275,9 @@ export class ImportService {
       return { operations: [...bodyRows, ...attachmentRows], source: detected === 'HAPI' ? 'HAPI_EMAIL' : 'XTB_DOCUMENT', validatedCredentialIds: [...validatedCredentialIds] };
     }
     if (extension === 'pdf' || file.mimetype === 'application/pdf') {
-      const pdf = await this.extractPdfWithCandidates(file.buffer, passwordCandidates);
-      return { operations: parseXtbDocument(pdf.text), source: 'XTB_DOCUMENT', validatedCredentialIds: pdf.credentialId ? [pdf.credentialId] : [] };
+      const expectedAccountNumber = xtbStatementAccountNumber(file.originalname);
+      const pdf = await this.extractPdfWithCandidates(file.buffer, passwordCandidates, expectedAccountNumber);
+      return { operations: parseXtbDocument(pdf.text, expectedAccountNumber), source: 'XTB_DOCUMENT', validatedCredentialIds: pdf.credentialId ? [pdf.credentialId] : [] };
     }
     if (extension === 'csv' || file.mimetype.includes('csv')) {
       if (!broker) throw new HttpError(422, 'Selecciona Hapi o XTB para importar un CSV.', 'BROKER_REQUIRED');
@@ -231,7 +291,7 @@ export class ImportService {
     throw new HttpError(415, 'Formato no compatible. Usa EML, PDF, CSV o TXT.', 'UNSUPPORTED_IMPORT_FILE');
   }
 
-  private async extractPdfWithCandidates(buffer: Buffer, candidates: PasswordCandidate[]) {
+  private async extractPdfWithCandidates(buffer: Buffer, candidates: PasswordCandidate[], expectedAccountNumber?: string) {
     let passwordRequired: unknown;
     try {
       return { text: await extractPdfText(buffer), credentialId: undefined as string | undefined };
@@ -240,13 +300,22 @@ export class ImportService {
       passwordRequired = error;
     }
     let lastError = passwordRequired;
-    for (const candidate of candidates) {
+    const matchingCandidates = expectedAccountNumber
+      ? candidates.filter((candidate) => !candidate.externalAccountNumber || candidate.externalAccountNumber === expectedAccountNumber)
+      : candidates;
+    for (const candidate of matchingCandidates) {
       try {
         return { text: await extractPdfText(buffer, candidate.password), credentialId: candidate.credentialId };
       } catch (error) {
         if (!(error instanceof HttpError) || error.code !== 'INVALID_PDF_PASSWORD') throw error;
         lastError = error;
       }
+    }
+    if (expectedAccountNumber && !matchingCandidates.length) {
+      throw new HttpError(422, `Guarda la contraseña del PDF para la cuenta XTB ${expectedAccountNumber}.`, 'PDF_PASSWORD_REQUIRED', { accountNumber: expectedAccountNumber });
+    }
+    if (expectedAccountNumber && lastError instanceof HttpError) {
+      throw new HttpError(422, `La contraseña guardada no abre el PDF de la cuenta XTB ${expectedAccountNumber}.`, 'INVALID_PDF_PASSWORD', { accountNumber: expectedAccountNumber });
     }
     throw lastError;
   }

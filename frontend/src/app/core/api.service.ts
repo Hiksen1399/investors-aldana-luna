@@ -36,7 +36,7 @@ export class ApiService {
   confirmImport(id: string) { return this.http.post<{ data: { batch: ImportBatch; imported: number; duplicates: number } }>(`${this.base}/imports/${id}/confirm`, {}); }
   outlookStatus() { return this.http.get<{ data: OutlookConnectionStatus }>(`${this.base}/imports/outlook/status`); }
   connectOutlook() { return this.http.post<{ data: { url: string } }>(`${this.base}/imports/outlook/connect`, {}); }
-  syncOutlook(lookbackMonths?: number) { return this.http.post<{ data: { scanned: number; matched: number; batches: number; duplicates: number; ignored: number; failed: number; passwordFailures: number; cleaned: number; truncated: boolean; from: string; lastSyncedAt: string } }>(`${this.base}/imports/outlook/sync`, lookbackMonths ? { lookbackMonths } : {}); }
+  syncOutlook(lookbackMonths?: number) { return this.http.post<{ data: { scanned: number; matched: number; batches: number; duplicates: number; ignored: number; failed: number; passwordFailures: number; passwordFailureAccounts: string[]; cleaned: number; truncated: boolean; from: string; lastSyncedAt: string } }>(`${this.base}/imports/outlook/sync`, lookbackMonths ? { lookbackMonths } : {}); }
   disconnectOutlook() { return this.http.delete<{ data: { disconnected: boolean } }>(`${this.base}/imports/outlook`); }
   xtbPasswordStatus() { return this.http.get<{ data: XtbPasswordStatus[] }>(`${this.base}/imports/xtb-password/status`); }
   saveXtbPassword(accountId: string, password: string) { return this.http.put<{ data: XtbPasswordStatus }>(`${this.base}/imports/xtb-password`, { accountId, password }); }

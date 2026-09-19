@@ -86,7 +86,7 @@ export class ImportsPage {
       accountId: value['accountId'] || this.selectedAccountId,
       externalAccountNumber: value['externalAccountNumber'] || undefined,
       externalOrderId: value['externalOrderId'] || undefined,
-      sourceSymbol: symbol, symbol, providerSymbol: symbol, assetName: symbol, assetType: value['assetType'] || 'STOCK', exchange: value['exchange'] || undefined,
+      sourceSymbol: value['sourceSymbol'] || symbol, symbol, providerSymbol: symbol, assetName: symbol, assetType: value['assetType'] || 'STOCK', exchange: value['exchange'] || undefined,
       side: value['side'], quantity: String(value['quantity']), unitPrice: String(value['unitPrice']), grossAmount: String(value['grossAmount'] || Number(value['quantity']) * Number(value['unitPrice'])), fees: String(value['fees'] || 0), taxes: String(value['taxes'] || 0), currencyCode: value['currencyCode'] || 'USD', exchangeRate: String(value['exchangeRate'] || 1), executedAt: value['executedAt'],
     };
     this.api.updateImportRow(row.id, payload).subscribe({ next: () => this.refreshSelected(), error: (error) => this.error.set(error.error?.error?.message ?? 'Revisa los campos antes de aprobar.') });
@@ -120,7 +120,10 @@ export class ImportsPage {
         this.syncingOutlook.set(false);
         const cleanup = data.cleaned ? ` Quitamos ${data.cleaned} correo(s) que no eran operaciones.` : '';
         this.success.set((data.batches ? `Encontramos ${data.batches} confirmación(es) con operaciones.` : 'No encontramos operaciones nuevas en el período seleccionado.') + cleanup);
-        if (data.passwordFailures) this.error.set(`${data.passwordFailures} PDF de XTB no pudieron abrirse. Verifica la contraseña cifrada de la cuenta.`);
+        if (data.passwordFailures) {
+          const accounts = data.passwordFailureAccounts?.length ? ` de la cuenta ${data.passwordFailureAccounts.join(', ')}` : '';
+          this.error.set(`${data.passwordFailures} PDF de XTB${accounts} no pudieron abrirse. Actualiza la contraseña del PDF que aparece en XTB > Mi perfil > Datos de perfil.`);
+        }
         else if (data.failed) this.error.set(`${data.failed} correo(s) no pudieron procesarse.`);
         if (data.truncated) this.error.set('La búsqueda alcanzó el límite de 5.000 mensajes. Selecciona un período más corto para completar el historial.');
         this.load();
@@ -156,6 +159,8 @@ export class ImportsPage {
   }
 
   selectedXtbPasswordStatus() { return this.xtbPasswords().find((status) => status.accountId === this.xtbAccountId); }
+
+  goToXtbPassword() { document.querySelector('#xtb-credentials')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 
   statusLabel(status: string) { return ({ PROCESSING: 'Procesando', NEEDS_REVIEW: 'Requiere revisión', COMPLETED: 'Completada', FAILED: 'Fallida', APPROVED: 'Aprobada', PENDING: 'Pendiente', DUPLICATE: 'Duplicada', REJECTED: 'Rechazada', ERROR: 'Con error' } as Record<string,string>)[status] ?? status; }
   canEdit(row: ImportRow) { return !row.transaction && !['DUPLICATE','REJECTED'].includes(row.status); }

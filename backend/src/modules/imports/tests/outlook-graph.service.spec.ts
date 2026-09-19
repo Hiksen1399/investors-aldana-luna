@@ -2,6 +2,7 @@ import type { AxiosInstance } from 'axios';
 import { describe, expect, it, vi } from 'vitest';
 import { SecretVault } from '../../../shared/security/secret-vault.js';
 import { isBrokerTradeMessage, isExplicitlyNonTradeMessage, OutlookGraphService } from '../outlook-graph.service.js';
+import { isXtbExecutionEmail } from '../xtb-email.policy.js';
 
 describe('SecretVault', () => {
   it('cifra los tokens con autenticación y propósito', () => {
@@ -36,6 +37,7 @@ describe('OutlookGraphService', () => {
     const repository = {
       getMicrosoftConnection: vi.fn().mockResolvedValue({ id: 'connection-1', userId: 'user-1', encryptedSecretRef: 'encrypted-cache', email: 'user@outlook.com', lastSyncedAt: null }),
       updateMicrosoftConnection: vi.fn().mockResolvedValue({}),
+      listBrokerAccountNumbers: vi.fn().mockResolvedValue(['53604716']),
       listOutlookImportsForCleanup: vi.fn().mockResolvedValue([{ id: 'false-batch-1', emailMessage: { sender: 'no-reply@hapi.trade', subject: 'Dividend from QQQ received!' }, rows: [{ transaction: null }] }]),
       deleteImportBatches: vi.fn().mockResolvedValue({ count: 1 }),
     };
@@ -61,7 +63,11 @@ describe('OutlookGraphService', () => {
     expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: '✅ Order Executed' })).toBe(true);
     expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: '⏳ Order Placed' })).toBe(false);
     expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: 'Tu orden de compra fue ejecutada' })).toBe(true);
-    expect(isBrokerTradeMessage({ sender: 'reports@mail.xtb.com', subject: 'Confirmación de operaciones' })).toBe(true);
+    expect(isBrokerTradeMessage({ sender: 'dailystatements@mail.xtb.com', subject: 'Confirmación de ejecución de orden - 53604716' })).toBe(true);
+    expect(isBrokerTradeMessage({ sender: 'reports@mail.xtb.com', subject: 'Confirmación de operaciones' })).toBe(false);
+    expect(isBrokerTradeMessage({ sender: 'support@mail.xtb.com', subject: 'Confirmación de ejecución de orden - 53604716' })).toBe(false);
+    expect(isXtbExecutionEmail('dailystatements@mail.xtb.com', 'Confirmación de ejecución de orden - 53604716', new Set(['53604716']))).toBe(true);
+    expect(isXtbExecutionEmail('dailystatements@mail.xtb.com', 'Confirmación de ejecución de orden - 51229606', new Set(['53604716']))).toBe(false);
     expect(isBrokerTradeMessage({ sender: 'no-reply@hapi.trade', subject: 'Dividend from QQQ received!' })).toBe(false);
     expect(isBrokerTradeMessage({ senderName: 'Hapi Securities', subject: 'Your statement from Hapi is ready!' })).toBe(false);
     expect(isExplicitlyNonTradeMessage({ sender: 'news@imhapi.app', subject: 'Sé de los primeros en depositar' })).toBe(true);

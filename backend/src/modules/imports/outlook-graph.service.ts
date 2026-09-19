@@ -7,6 +7,7 @@ import { HttpError } from '../../shared/errors/http-error.js';
 import { secretVault, type SecretVault } from '../../shared/security/secret-vault.js';
 import { importRepository, type ImportRepository } from './import.repository.js';
 import { importService, type ImportService } from './import.service.js';
+import { isXtbExecutionEmail } from './xtb-email.policy.js';
 
 const scopes = ['User.Read', 'Mail.Read'];
 const statePurpose = 'outlook-oauth-state';
@@ -31,7 +32,6 @@ type MsalClientFactory = () => ConfidentialClientApplication;
 
 const normalized = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const explicitNonTradePattern = /\b(dividend|dividendo|statement|estado de cuenta|extracto|important information|informacion importante|cambios legales|deposit|depositar|deposito|withdrawal|retiro|proxy|vote|votacion|tax document|documento fiscal|promocion|newsletter|webinar|market update|order placed|order submitted|orden colocada|orden enviada|orden recibida)\b/i;
-const tradePattern = /\b(compra|compraste|comprada|venta|vendiste|vendida|buy|bought|sell|sold|order|orden|trade|operacion|transaction|confirmacion|confirmation|execution|ejecutada|ejecutado|contract note)\b/i;
 const brokerPattern = /(?:^|[@.\s_-])(hapi|xtb)(?:[.@\s_-]|$)/i;
 const executedOrderPattern = /\b(order executed|order has been executed|order completed|orden(?: de (?:compra|venta))? (?:(?:ha sido|fue) )?ejecutad[ao]|orden completad[ao])\b/i;
 
@@ -41,7 +41,7 @@ export const isExplicitlyNonTradeMessage = (input: { sender?: string | null; sub
 export const isBrokerTradeMessage = (input: { sender?: string | null; senderName?: string | null; subject?: string | null }) => {
   const value = normalized(`${input.sender ?? ''} ${input.senderName ?? ''} ${input.subject ?? ''}`);
   if (!brokerPattern.test(value) || explicitNonTradePattern.test(value)) return false;
-  return /hapi/i.test(value) ? executedOrderPattern.test(value) : tradePattern.test(value);
+  return /hapi/i.test(value) ? executedOrderPattern.test(value) : isXtbExecutionEmail(input.sender, input.subject);
 };
 
 export class OutlookGraphService {
@@ -109,6 +109,7 @@ export class OutlookGraphService {
     const from = options.lookbackMonths ? this.monthsBefore(startedAt, options.lookbackMonths) : connection.lastSyncedAt ?? this.monthsBefore(startedAt, 1);
     const listing = await this.listMessages(accessToken, from);
     const messages = listing.messages;
+    const xtbAccountNumbers = new Set(await this.repository.listBrokerAccountNumbers(userId, 'xtb'));
     const cleaned = await this.cleanupFalsePositiveImports(userId);
     let matched = 0;
     let batches = 0;
@@ -116,9 +117,10 @@ export class OutlookGraphService {
     let ignored = 0;
     let failed = 0;
     let passwordFailures = 0;
+    const passwordFailureAccounts = new Set<string>();
 
     for (const message of messages) {
-      if (!this.isBrokerMessage(message)) continue;
+      if (!this.isBrokerMessage(message, xtbAccountNumbers)) continue;
       matched++;
       try {
         const mimeResponse = await this.graph.get(`/me/messages/${encodeURIComponent(message.id)}/$value`, { headers: this.authorization(accessToken), responseType: 'arraybuffer', maxContentLength: 12 * 1024 * 1024 });
@@ -134,13 +136,17 @@ export class OutlookGraphService {
         else ignored++;
       } catch (error) {
         failed++;
-        if (error instanceof HttpError && ['PDF_PASSWORD_REQUIRED', 'INVALID_PDF_PASSWORD'].includes(error.code)) passwordFailures++;
+        if (error instanceof HttpError && ['PDF_PASSWORD_REQUIRED', 'INVALID_PDF_PASSWORD'].includes(error.code)) {
+          passwordFailures++;
+          const accountNumber = (error.details as { accountNumber?: unknown } | undefined)?.accountNumber;
+          if (typeof accountNumber === 'string') passwordFailureAccounts.add(accountNumber);
+        }
       }
     }
 
     const encryptedCache = this.vault.encrypt(client.getTokenCache().serialize(), this.cachePurpose(userId));
     await this.repository.updateMicrosoftConnection(connection.id, { encryptedSecretRef: encryptedCache, lastSyncedAt: startedAt });
-    return { scanned: messages.length, matched, batches, duplicates, ignored, failed, passwordFailures, cleaned, truncated: listing.truncated, from, lastSyncedAt: startedAt };
+    return { scanned: messages.length, matched, batches, duplicates, ignored, failed, passwordFailures, passwordFailureAccounts: [...passwordFailureAccounts], cleaned, truncated: listing.truncated, from, lastSyncedAt: startedAt };
   }
 
   async disconnect(userId: string) {
@@ -200,8 +206,10 @@ export class OutlookGraphService {
     return { messages, truncated: Boolean(next) };
   }
 
-  private isBrokerMessage(message: GraphMessage) {
-    return isBrokerTradeMessage({ sender: message.from?.emailAddress.address, senderName: message.from?.emailAddress.name, subject: message.subject });
+  private isBrokerMessage(message: GraphMessage, xtbAccountNumbers: ReadonlySet<string>) {
+    const input = { sender: message.from?.emailAddress.address, senderName: message.from?.emailAddress.name, subject: message.subject };
+    const value = normalized(`${input.sender ?? ''} ${input.senderName ?? ''} ${input.subject ?? ''}`);
+    return /hapi/i.test(value) ? isBrokerTradeMessage(input) : isXtbExecutionEmail(input.sender, input.subject, xtbAccountNumbers);
   }
 
   private async cleanupFalsePositiveImports(userId: string) {
